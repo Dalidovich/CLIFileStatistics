@@ -68,7 +68,7 @@ public sealed class MetadataCollector
         if (ownerDenied)
         {
             needsAdmin = true;
-            notes.Add("Отказ в доступе при чтении владельца");
+            notes.Add("Access denied while reading the owner");
         }
 
         return new FileStatRecord

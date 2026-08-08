@@ -67,7 +67,7 @@ public sealed class FileScanner
             }
             catch
             {
-                files.Add(new ScanEntry(child, false, "Отказ в доступе при чтении атрибутов", null, disk));
+                files.Add(new ScanEntry(child, false, "Access denied while reading attributes", null, disk));
                 continue;
             }
 
@@ -77,7 +77,7 @@ public sealed class FileScanner
             {
                 if ((attr & FileAttributes.ReparsePoint) != 0)
                 {
-                    WriteRecord(new ScanEntry(child, true, null, "Репарс-точка (ссылка), рекурсивный обход пропущен", disk), exporter, stats);
+                    WriteRecord(new ScanEntry(child, true, null, "Reparse point (link), recursive walk skipped", disk), exporter, stats);
                     continue;
                 }
 
@@ -121,8 +121,8 @@ public sealed class FileScanner
 
     private static string Classify(Exception ex) => ex switch
     {
-        UnauthorizedAccessException => "Отказ в доступе (требуются права администратора)",
-        PathTooLongException => "Путь слишком длинный",
+        UnauthorizedAccessException => "Access denied (administrator rights required)",
+        PathTooLongException => "Path too long",
         _ => ex.Message
     };
 

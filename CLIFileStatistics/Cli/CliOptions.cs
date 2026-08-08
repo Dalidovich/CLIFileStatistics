@@ -36,7 +36,7 @@ public sealed class CliOptions
                 case "--drives":
                 {
                     if (!TryTakeValue(args, ref i, out var drives))
-                        return ParseResult.Fail($"Аргументу {arg} требуется значение: список букв дисков через запятую.");
+                        return ParseResult.Fail($"Argument {arg} requires a value: comma-separated drive letters.");
                     var driveError = options.SetDrives(drives);
                     if (driveError is not null)
                         return ParseResult.Fail(driveError);
@@ -47,7 +47,7 @@ public sealed class CliOptions
                 case "--path":
                 {
                     if (!TryTakeValue(args, ref i, out var path))
-                        return ParseResult.Fail($"Аргументу {arg} требуется значение: путь к каталогу.");
+                        return ParseResult.Fail($"Argument {arg} requires a value: a directory path.");
                     options.AddPath(path);
                     break;
                 }
@@ -56,7 +56,7 @@ public sealed class CliOptions
                 case "--separator":
                 {
                     if (!TryTakeValue(args, ref i, out var separator))
-                        return ParseResult.Fail($"Аргументу {arg} требуется значение: ',' ';' или comma/semicolon.");
+                        return ParseResult.Fail($"Argument {arg} requires a value: ',' ';' or comma/semicolon.");
                     var separatorError = options.SetSeparator(separator);
                     if (separatorError is not null)
                         return ParseResult.Fail(separatorError);
@@ -67,7 +67,7 @@ public sealed class CliOptions
                 case "--output":
                 {
                     if (!TryTakeValue(args, ref i, out var output))
-                        return ParseResult.Fail($"Аргументу {arg} требуется значение: путь к CSV-файлу.");
+                        return ParseResult.Fail($"Argument {arg} requires a value: a path to the CSV file.");
                     options.OutputPath = output;
                     break;
                 }
@@ -76,7 +76,7 @@ public sealed class CliOptions
                 case "--threads":
                 {
                     if (!TryTakeValue(args, ref i, out var threads))
-                        return ParseResult.Fail($"Аргументу {arg} требуется значение: число потоков.");
+                        return ParseResult.Fail($"Argument {arg} requires a value: the number of threads.");
                     var threadsError = options.ParseThreads(threads);
                     if (threadsError is not null)
                         return ParseResult.Fail(threadsError);
@@ -120,12 +120,12 @@ public sealed class CliOptions
                         break;
                     }
 
-                    return ParseResult.Fail($"Неизвестный аргумент: {arg}");
+                    return ParseResult.Fail($"Unknown argument: {arg}");
             }
         }
 
         if (options.DrivesSpecified && options.PathsSpecified)
-            return ParseResult.Fail("Флаги -d/--drives и -p/--path взаимоисключающие: укажите что-то одно.");
+            return ParseResult.Fail("Flags -d/--drives and -p/--path are mutually exclusive: specify only one.");
 
         return ParseResult.Ok(options);
     }
@@ -145,19 +145,19 @@ public sealed class CliOptions
                 var drive = new DriveInfo(letter + @":\");
                 if (drive.DriveType is DriveType.NoRootDirectory or DriveType.Unknown)
                 {
-                    Console.Error.WriteLine($"Диск {letter}: не найден — пропущен.");
+                    Console.Error.WriteLine($"Drive {letter}: not found — skipped.");
                     continue;
                 }
                 if (!drive.IsReady)
                 {
-                    Console.Error.WriteLine($"Диск {letter}: не готов (нет носителя) — пропущен.");
+                    Console.Error.WriteLine($"Drive {letter}: not ready (no media) — skipped.");
                     continue;
                 }
                 result.Add(new ScanRoot(drive.Name, drive.Name.TrimEnd('\\')));
             }
             catch
             {
-                Console.Error.WriteLine($"Диск {letter}: не найден — пропущен.");
+                Console.Error.WriteLine($"Drive {letter}: not found — skipped.");
             }
         }
 
@@ -175,7 +175,7 @@ public sealed class CliOptions
                 var fullPath = Path.GetFullPath(scanPath);
                 if (!Directory.Exists(fullPath))
                 {
-                    Console.Error.WriteLine($"Каталог {scanPath}: не найден — пропущен.");
+                    Console.Error.WriteLine($"Directory {scanPath}: not found — skipped.");
                     continue;
                 }
                 var disk = Path.GetPathRoot(fullPath)?.TrimEnd('\\') ?? "";
@@ -183,7 +183,7 @@ public sealed class CliOptions
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Каталог {scanPath}: неверный путь — {ex.Message}");
+                Console.Error.WriteLine($"Directory {scanPath}: invalid path — {ex.Message}");
             }
         }
 
@@ -212,7 +212,7 @@ public sealed class CliOptions
     private string? ParseThreads(string value)
     {
         if (!int.TryParse(value, out var count) || count < 1 || count > 512)
-            return $"Некорректное число потоков: '{value}'. Ожидается целое от 1 до 512.";
+            return $"Invalid number of threads: '{value}'. Expected an integer from 1 to 512.";
         Threads = count;
         return null;
     }
@@ -238,24 +238,26 @@ public sealed class CliOptions
             return null;
         }
 
-        return $"Некорректный разделитель: '{value}'. Укажите ',' ';' или слово comma/semicolon.";
+        return $"Invalid separator: '{value}'. Use ',' ';' or the words comma/semicolon.";
     }
 
     private string? SetDrives(string value)
     {
         DrivesSpecified = true;
 
-        var parts = value.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);        foreach (var part in parts)
+        var parts = value.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var part in parts)
         {
             var letter = part.TrimEnd(':').Trim().ToUpperInvariant();
             if (letter.Length != 1 || !char.IsLetter(letter[0]))
-                return $"Некорректное обозначение диска: '{part}'. Указывайте только буквы, например C,D,E.";
+                return $"Invalid drive letter: '{part}'. Use letters only, e.g. C,D,E.";
             if (!_driveLetters.Contains(letter))
                 _driveLetters.Add(letter);
         }
 
         if (_driveLetters.Count == 0)
-            return "Не задано ни одной буквы диска.";
+            return "No drive letters specified.";
 
         return null;
     }
@@ -296,37 +298,37 @@ public sealed class CliOptions
         $"FileStats_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
 
     public static string HelpText { get; } =
-        "CLIFileStatistics — сбор статистики по файлам диска в CSV (UTF-8 с BOM).\n" +
+        "CLIFileStatistics — collects file statistics to CSV (UTF-8 with BOM).\n" +
         "\n" +
-        "Использование:\n" +
-        "  CLIFileStatistics [опции]\n" +
+        "Usage:\n" +
+        "  CLIFileStatistics [options]\n" +
         "\n" +
-        "Опции:\n" +
-        "  -d, --drives C,D,E   Буквы дисков для сканирования через запятую.\n" +
-        "                       Если не указано — берётся диск, на котором находится exe.\n" +
-        "  -p, --path <путь>    Сканировать конкретный каталог(и), а не весь диск.\n" +
-        "                       Флаг повторяемый; несколько путей можно через ';'.\n" +
-        "                       Несовместим с -d/--drives.\n" +
-        "  -s, --separator <S>  Разделитель полей CSV: ',' (по умолчанию), ';', или\n" +
-        "                       слово comma/semicolon. Для Excel RU удобнее ';'.\n" +
-        "  -o, --output <путь>  Куда сохранить CSV. Если указана папка — внутри создастся\n" +
-        "                       файл FileStats_<дата>.csv. По умолчанию — рядом с exe.\n" +
-        "  -t, --threads <N>    Число потоков сбора метаданных (по умолчанию — число ядер).\n" +
-        "  -h, --help           Показать эту справку.\n" +
-        "  --version            Версия программы.\n" +
+        "Options:\n" +
+        "  -d, --drives C,D,E   Drive letters to scan, comma-separated.\n" +
+        "                       If omitted, the drive containing the exe is used.\n" +
+        "  -p, --path <path>    Scan specific directory(ies) instead of a whole drive.\n" +
+        "                       Repeatable flag; several paths can be separated by ';'.\n" +
+        "                       Mutually exclusive with -d/--drives.\n" +
+        "  -s, --separator <S>  CSV field separator: ',' (default), ';', or\n" +
+        "                       the words comma/semicolon.\n" +
+        "  -o, --output <path>  Where to save the CSV. If a folder is given, a file\n" +
+        "                       FileStats_<date>.csv is created inside. Default: next to the exe.\n" +
+        "  -t, --threads <N>    Number of metadata collection threads (default: CPU count).\n" +
+        "  -h, --help           Show this help.\n" +
+        "  --version            Program version.\n" +
         "\n" +
-        "Примеры:\n" +
+        "Examples:\n" +
         "  CLIFileStatistics\n" +
         "  CLIFileStatistics -d C,D -o D:\\stats\n" +
         "  CLIFileStatistics -p \"D:\\repos\" -p \"C:\\Users\\pops\"\n" +
         "  CLIFileStatistics --path=\"D:\\repos;D:\\temp\" -s semicolon\n" +
         "  CLIFileStatistics --path=D:\\repos --output=D:\\stats\\files.csv --threads 4\n" +
         "\n" +
-        "Колонки CSV:\n" +
-        "  Полный путь; Тип (File/Directory); Имя; Расширение; Диск; Директория; Создан;\n" +
-        "  Изменен; Размер байт; Описание; Приложение (ассоциация); Владелец; Атрибуты;\n" +
-        "  Нужны права админа (true/false); Примечание\n" +
+        "CSV columns:\n" +
+        "  Full path; Type (File/Directory); Name; Extension; Disk; Directory; Created;\n" +
+        "  Modified; Size bytes; Description; Application (association); Owner; Attributes;\n" +
+        "  Needs admin rights (true/false); Note\n" +
         "\n" +
-        "Файлы и каталоги, к которым нет доступа (нужны права администратора), записываются\n" +
-        "в CSV с пометкой 'Нужны права админа' = true и причиной в 'Примечание'.\n";
+        "Files and directories without access (administrator rights required) are written\n" +
+        "to the CSV with 'Needs admin rights' = true and the reason in 'Note'.\n";
 }

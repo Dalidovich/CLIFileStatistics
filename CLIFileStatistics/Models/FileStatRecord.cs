@@ -22,21 +22,21 @@ public sealed class FileStatRecord
 
     public static readonly string[] Header =
     {
-        "Полный путь",
-        "Тип",
-        "Имя",
-        "Расширение",
-        "Диск",
-        "Директория",
-        "Создан",
-        "Изменен",
-        "Размер байт",
-        "Описание",
-        "Приложение",
-        "Владелец",
-        "Атрибуты",
-        "Нужны права админа",
-        "Примечание"
+        "Full path",
+        "Type",
+        "Name",
+        "Extension",
+        "Disk",
+        "Directory",
+        "Created",
+        "Modified",
+        "Size bytes",
+        "Description",
+        "Application",
+        "Owner",
+        "Attributes",
+        "Needs admin rights",
+        "Note"
     };
 
     public string?[] ToCsvFields() => new string?[]

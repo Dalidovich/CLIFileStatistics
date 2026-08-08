@@ -34,7 +34,7 @@ internal static class Program
 
         if (!parsed.Success)
         {
-            Console.Error.WriteLine("Ошибка: " + parsed.Error);
+            Console.Error.WriteLine("Error: " + parsed.Error);
             Console.Error.WriteLine();
             Console.Error.WriteLine(CliOptions.HelpText);
             return 2;
@@ -45,7 +45,7 @@ internal static class Program
         var roots = options.PathsSpecified ? options.ResolvePaths() : options.ResolveDrives();
         if (roots.Count == 0)
         {
-            Console.Error.WriteLine("Не найдено ни одного доступного диска или каталога для сканирования.");
+            Console.Error.WriteLine("No accessible disks or directories found to scan.");
             return 2;
         }
 
@@ -56,15 +56,15 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Ошибка формирования пути вывода: " + ex.Message);
+            Console.Error.WriteLine("Error building output path: " + ex.Message);
             return 2;
         }
 
-        Console.WriteLine("CLIFileStatistics — статистика файлов в CSV");
-        Console.WriteLine($"Диски/пути:  {string.Join(", ", roots.Select(r => r.Path))}");
-        Console.WriteLine($"Файл вывода: {outputPath}");
-        Console.WriteLine($"Разделитель: {options.Separator}");
-        Console.WriteLine($"Потоков:     {options.Threads}");
+        Console.WriteLine("CLIFileStatistics — file statistics to CSV");
+        Console.WriteLine($"Disks/Paths: {string.Join(", ", roots.Select(r => r.Path))}");
+        Console.WriteLine($"Output file: {outputPath}");
+        Console.WriteLine($"Separator:   {options.Separator}");
+        Console.WriteLine($"Threads:     {options.Threads}");
         Console.WriteLine();
 
         using var cts = new CancellationTokenSource();
@@ -73,7 +73,7 @@ internal static class Program
             e.Cancel = true;
             cts.Cancel();
             Console.WriteLine();
-            Console.WriteLine("Получена команда прерывания. Сохраняю уже собранные данные...");
+            Console.WriteLine("Interrupt received. Saving already collected data...");
         };
 
         var scanner = new FileScanner(options.Threads);
@@ -87,30 +87,30 @@ internal static class Program
                 stopwatch.Stop();
 
                 Console.WriteLine();
-                Console.WriteLine("Готово.");
-                Console.WriteLine($"Обработано строк:   {stats.Total:N0}  (файлов: {stats.Files:N0}, каталогов: {stats.Directories:N0})");
-                Console.WriteLine($"Нужны права админа: {stats.NeedsAdmin:N0}");
-                Console.WriteLine($"Затрачено времени:  {stopwatch.Elapsed:hh\\:mm\\:ss}");
-                Console.WriteLine($"Файл сохранён:      {outputPath}");
+                Console.WriteLine("Done.");
+                Console.WriteLine($"Rows processed:    {stats.Total:N0}  (files: {stats.Files:N0}, directories: {stats.Directories:N0})");
+                Console.WriteLine($"Needs admin rights: {stats.NeedsAdmin:N0}");
+                Console.WriteLine($"Elapsed:           {stopwatch.Elapsed:hh\\:mm\\:ss}");
+                Console.WriteLine($"File saved:        {outputPath}");
 
                 return cts.IsCancellationRequested ? 1 : 0;
             }
             catch (UnauthorizedAccessException ex)
             {
                 Console.Error.WriteLine();
-                Console.Error.WriteLine("Нет доступа к файлу вывода: " + ex.Message);
+                Console.Error.WriteLine("No access to the output file: " + ex.Message);
                 return 1;
             }
             catch (IOException ex)
             {
                 Console.Error.WriteLine();
-                Console.Error.WriteLine("Ошибка записи вывода: " + ex.Message);
+                Console.Error.WriteLine("Output write error: " + ex.Message);
                 return 1;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine();
-                Console.Error.WriteLine("Непредвиденная ошибка: " + ex.Message);
+                Console.Error.WriteLine("Unexpected error: " + ex.Message);
                 return 1;
             }
         }
@@ -119,8 +119,8 @@ internal static class Program
     private static void ReportProgress(ScanStats stats)
     {
         var text =
-            $"Обработано: {stats.Total:N0}  |  файлов: {stats.Files:N0}  |  " +
-            $"каталогов: {stats.Directories:N0}  |  без доступа: {stats.NeedsAdmin:N0}";
+            $"Processed: {stats.Total:N0}  |  files: {stats.Files:N0}  |  " +
+            $"directories: {stats.Directories:N0}  |  no access: {stats.NeedsAdmin:N0}";
 
         int width;
         try
