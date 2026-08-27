@@ -22,7 +22,7 @@ public sealed class FileAssociationResolver
         try
         {
             var progId = GetDefault(Registry.ClassesRoot, ext)
-                         ?? GetDefault(Registry.ClassesRoot, "SystemFileAssociations" + ext);
+                         ?? GetDefault(Registry.ClassesRoot, @"SystemFileAssociations\" + ext);
 
             if (string.IsNullOrWhiteSpace(progId))
                 return "";

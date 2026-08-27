@@ -4,6 +4,8 @@ namespace CLIFileStatistics.Cli;
 
 public sealed class CliOptions
 {
+    private static readonly char[] AllowedSeparators = { ',', ';', '|', '	' };
+
     private readonly List<string> _driveLetters = new();
     private readonly List<string> _scanPaths = new();
 
@@ -134,7 +136,7 @@ public sealed class CliOptions
     {
         var letters = DrivesSpecified
             ? (IEnumerable<string>)_driveLetters
-            : new[] { GetExeDriveLetter() };
+            : DefaultDriveLetters();
 
         var result = new List<ScanRoot>();
 
@@ -166,7 +168,7 @@ public sealed class CliOptions
 
     public List<ScanRoot> ResolvePaths()
     {
-        var result = new List<ScanRoot>();
+        var resolved = new List<string>();
 
         foreach (var scanPath in _scanPaths)
         {
@@ -178,8 +180,7 @@ public sealed class CliOptions
                     Console.Error.WriteLine($"Directory {scanPath}: not found — skipped.");
                     continue;
                 }
-                var disk = Path.GetPathRoot(fullPath)?.TrimEnd('\\') ?? "";
-                result.Add(new ScanRoot(fullPath, disk));
+                resolved.Add(fullPath);
             }
             catch (Exception ex)
             {
@@ -187,7 +188,35 @@ public sealed class CliOptions
             }
         }
 
+        resolved.Sort(StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<ScanRoot>();
+
+        foreach (var fullPath in resolved)
+        {
+            if (result.Count > 0 && IsSameOrInside(fullPath, result[^1].Path))
+            {
+                Console.Error.WriteLine($"Directory {fullPath}: already covered by {result[^1].Path} — skipped.");
+                continue;
+            }
+
+            var disk = Path.GetPathRoot(fullPath)?.TrimEnd('\\') ?? "";
+            result.Add(new ScanRoot(fullPath, disk));
+        }
+
         return result;
+    }
+
+    private static bool IsSameOrInside(string candidate, string parent)
+    {
+        if (string.Equals(candidate, parent, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var prefix = parent.EndsWith(Path.DirectorySeparatorChar)
+            ? parent
+            : parent + Path.DirectorySeparatorChar;
+
+        return candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     public string ResolveOutputPath()
@@ -203,10 +232,10 @@ public sealed class CliOptions
             path = Path.Combine(path, DefaultFileName());
         }
 
-        if (string.IsNullOrEmpty(Path.GetExtension(path)))
+        if (!Path.GetExtension(path).Equals(".csv", StringComparison.OrdinalIgnoreCase))
             path += ".csv";
 
-        return path;
+        return Path.GetFullPath(path);
     }
 
     private string? ParseThreads(string value)
@@ -220,25 +249,30 @@ public sealed class CliOptions
     private string? SetSeparator(string value)
     {
         var trimmed = value.Trim();
-        var lower = trimmed.ToLowerInvariant();
 
-        if (lower == "comma")
+        switch (trimmed.ToLowerInvariant())
         {
-            Separator = ',';
-            return null;
+            case "comma":
+                Separator = ',';
+                return null;
+            case "semicolon":
+                Separator = ';';
+                return null;
+            case "tab":
+                Separator = '	';
+                return null;
+            case "pipe":
+                Separator = '|';
+                return null;
         }
-        if (lower == "semicolon")
-        {
-            Separator = ';';
-            return null;
-        }
-        if (trimmed.Length == 1)
+
+        if (trimmed.Length == 1 && Array.IndexOf(AllowedSeparators, trimmed[0]) >= 0)
         {
             Separator = trimmed[0];
             return null;
         }
 
-        return $"Invalid separator: '{value}'. Use ',' ';' or the words comma/semicolon.";
+        return $"Invalid separator: '{value}'. Allowed: ',' ';' '|' or the words comma/semicolon/tab/pipe.";
     }
 
     private string? SetDrives(string value)
@@ -290,8 +324,22 @@ public sealed class CliOptions
 
     public static string GetExeDriveLetter()
     {
-        var root = Path.GetPathRoot(AppContext.BaseDirectory) ?? "C:\\";
-        return root.TrimEnd('\\').TrimEnd(':').ToUpperInvariant();
+        var root = Path.GetPathRoot(AppContext.BaseDirectory) ?? "";
+        var letter = root.TrimEnd('\\').TrimEnd(':');
+        return letter.Length == 1 && char.IsLetter(letter[0]) ? letter.ToUpperInvariant() : "";
+    }
+
+    private static string[] DefaultDriveLetters()
+    {
+        var letter = GetExeDriveLetter();
+        if (letter.Length == 0)
+        {
+            Console.Error.WriteLine(
+                "Cannot determine the drive holding the executable (it is not on a local drive). Use -d or -p explicitly.");
+            return Array.Empty<string>();
+        }
+
+        return new[] { letter };
     }
 
     private static string DefaultFileName() =>
@@ -309,10 +357,11 @@ public sealed class CliOptions
         "  -p, --path <path>    Scan specific directory(ies) instead of a whole drive.\n" +
         "                       Repeatable flag; several paths can be separated by ';'.\n" +
         "                       Mutually exclusive with -d/--drives.\n" +
-        "  -s, --separator <S>  CSV field separator: ',' (default), ';', or\n" +
-        "                       the words comma/semicolon.\n" +
+        "  -s, --separator <S>  CSV field separator: ',' (default), ';', '|', or\n" +
+        "                       the words comma/semicolon/tab/pipe.\n" +
         "  -o, --output <path>  Where to save the CSV. If a folder is given, a file\n" +
-        "                       FileStats_<date>.csv is created inside. Default: next to the exe.\n" +
+        "                       FileStats_<date>.csv is created inside. The .csv extension\n" +
+        "                       is enforced. Default: next to the exe.\n" +
         "  -t, --threads <N>    Number of metadata collection threads (default: CPU count).\n" +
         "  -h, --help           Show this help.\n" +
         "  --version            Program version.\n" +

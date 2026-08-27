@@ -68,51 +68,58 @@ internal static class Program
         Console.WriteLine();
 
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        ConsoleCancelEventHandler onCancel = (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
             Console.WriteLine();
             Console.WriteLine("Interrupt received. Saving already collected data...");
         };
+        Console.CancelKeyPress += onCancel;
 
-        var scanner = new FileScanner(options.Threads);
+        var scanner = new FileScanner(options.Threads, outputPath);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        using (var exporter = new CsvExporter(outputPath, options.Separator))
+        try
         {
-            try
+            ScanStats stats;
+            using (var exporter = new CsvExporter(outputPath, options.Separator))
             {
-                var stats = scanner.Scan(roots, exporter, cts.Token, ReportProgress);
-                stopwatch.Stop();
+                stats = scanner.Scan(roots, exporter, cts.Token, ReportProgress);
+            }
 
-                Console.WriteLine();
-                Console.WriteLine("Done.");
-                Console.WriteLine($"Rows processed:    {stats.Total:N0}  (files: {stats.Files:N0}, directories: {stats.Directories:N0})");
-                Console.WriteLine($"Needs admin rights: {stats.NeedsAdmin:N0}");
-                Console.WriteLine($"Elapsed:           {stopwatch.Elapsed:hh\\:mm\\:ss}");
-                Console.WriteLine($"File saved:        {outputPath}");
+            stopwatch.Stop();
 
-                return cts.IsCancellationRequested ? 1 : 0;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("No access to the output file: " + ex.Message);
-                return 1;
-            }
-            catch (IOException ex)
-            {
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("Output write error: " + ex.Message);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("Unexpected error: " + ex.Message);
-                return 1;
-            }
+            Console.WriteLine();
+            Console.WriteLine("Done.");
+            Console.WriteLine($"Rows processed:    {stats.Total:N0}  (files: {stats.Files:N0}, directories: {stats.Directories:N0})");
+            Console.WriteLine($"Needs admin rights: {stats.NeedsAdmin:N0}");
+            Console.WriteLine($"Elapsed:           {stopwatch.Elapsed:hh\\:mm\\:ss}");
+            Console.WriteLine($"File saved:        {outputPath}");
+
+            return cts.IsCancellationRequested ? 1 : 0;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("No access to the output file: " + ex.Message);
+            return 1;
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Output write error: " + ex.Message);
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Unexpected error: " + ex.Message);
+            return 1;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
         }
     }
 

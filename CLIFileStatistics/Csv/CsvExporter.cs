@@ -6,6 +6,7 @@ namespace CLIFileStatistics.Csv;
 public sealed class CsvExporter : IDisposable
 {
     private const int FlushEveryRows = 10000;
+    private const string FormulaTriggers = "=+-@\t\r";
 
     private readonly StreamWriter _writer;
     private readonly object _sync = new();
@@ -14,16 +15,18 @@ public sealed class CsvExporter : IDisposable
 
     public CsvExporter(string filePath, char separator)
     {
-        var fullPath = Path.GetFullPath(filePath);
-        var directory = Path.GetDirectoryName(fullPath);
+        FullPath = Path.GetFullPath(filePath);
+        var directory = Path.GetDirectoryName(FullPath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
 
         _separator = separator;
-        var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        var stream = new FileStream(FullPath, FileMode.Create, FileAccess.Write, FileShare.Read);
         _writer = new StreamWriter(stream, new UTF8Encoding(true));
         WriteLine(string.Join(_separator.ToString(), FileStatRecord.Header));
     }
+
+    public string FullPath { get; }
 
     public void WriteRow(FileStatRecord record)
     {
@@ -56,9 +59,11 @@ public sealed class CsvExporter : IDisposable
         if (string.IsNullOrEmpty(field))
             return "";
 
-        if (field.IndexOf(separator) >= 0 || field.IndexOfAny(new[] { '"', '\r', '\n' }) >= 0)
-            return "\"" + field.Replace("\"", "\"\"") + "\"";
+        var value = FormulaTriggers.IndexOf(field[0]) >= 0 ? "'" + field : field;
 
-        return field;
+        if (value.IndexOf(separator) >= 0 || value.IndexOfAny(new[] { '"', '\r', '\n' }) >= 0)
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+
+        return value;
     }
 }

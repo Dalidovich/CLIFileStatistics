@@ -5,6 +5,11 @@ namespace CLIFileStatistics.Metadata;
 
 public sealed class MetadataCollector
 {
+    private static readonly HashSet<string> VersionedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "exe", "dll", "sys", "ocx", "scr", "cpl", "drv", "mui", "ax", "efi", "tsp", "node", "com"
+    };
+
     private readonly OwnerHelper _ownerHelper = new();
     private readonly DescriptionResolver _descriptionResolver = new();
     private readonly FileAssociationResolver _associationResolver = new();
@@ -52,7 +57,9 @@ public sealed class MetadataCollector
         {
         }
 
-        var description = isDirectory ? "" : _descriptionResolver.GetDescription(path);
+        var description = !isDirectory && VersionedExtensions.Contains(extension)
+            ? _descriptionResolver.GetDescription(path)
+            : "";
         var associatedApp = !isDirectory && extension.Length > 0
             ? _associationResolver.GetAssociatedApp(extension)
             : "";

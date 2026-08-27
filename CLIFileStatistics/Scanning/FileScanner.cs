@@ -6,15 +6,18 @@ namespace CLIFileStatistics.Scanning;
 
 public sealed class FileScanner
 {
+    private const int ParallelFileThreshold = 32;
+
     private readonly int _threads;
+    private readonly string? _outputPath;
     private readonly MetadataCollector _collector = new();
-    private readonly object _reportSync = new();
     private readonly System.Diagnostics.Stopwatch _reportTimer = System.Diagnostics.Stopwatch.StartNew();
     private long _lastReportedCount;
 
-    public FileScanner(int threads)
+    public FileScanner(int threads, string? outputPath)
     {
         _threads = Math.Max(1, threads);
+        _outputPath = outputPath;
     }
 
     public ScanStats Scan(IReadOnlyList<ScanRoot> roots, CsvExporter exporter, CancellationToken token, Action<ScanStats>? report)
@@ -24,7 +27,7 @@ public sealed class FileScanner
         try
         {
             foreach (var root in roots)
-                Walk(root.Path, root.Disk, exporter, stats, token, report);
+                Walk(root, exporter, stats, token, report);
         }
         catch (OperationCanceledException)
         {
@@ -33,32 +36,63 @@ public sealed class FileScanner
         return stats;
     }
 
-    private void Walk(string dir, string disk, CsvExporter exporter, ScanStats stats, CancellationToken token, Action<ScanStats>? report)
+    private void Walk(ScanRoot root, CsvExporter exporter, ScanStats stats, CancellationToken token, Action<ScanStats>? report)
     {
-        token.ThrowIfCancellationRequested();
+        var pending = new Stack<string>();
+        pending.Push(root.Path);
 
-        string? accessError = null;
-        IEnumerable<string>? children = null;
-        try
+        while (pending.Count > 0)
         {
-            children = Directory.EnumerateFileSystemEntries(dir);
+            token.ThrowIfCancellationRequested();
+
+            var dir = pending.Pop();
+
+            string? accessError = null;
+            IEnumerable<string>? children = null;
+            try
+            {
+                children = Directory.EnumerateFileSystemEntries(dir);
+            }
+            catch (Exception ex)
+            {
+                accessError = Classify(ex);
+            }
+
+            WriteRecord(new ScanEntry(dir, true, accessError, null, root.Disk), exporter, stats);
+
+            if (children is null)
+                continue;
+
+            var files = new List<ScanEntry>();
+            var subdirectories = new List<string>();
+            CollectChildren(children, root.Disk, files, subdirectories, exporter, stats, token);
+
+            foreach (var record in CollectMetadata(files, token))
+                WriteRecord(record, exporter, stats);
+
+            ReportProgress(stats, report);
+
+            subdirectories.Sort(StringComparer.OrdinalIgnoreCase);
+            for (var i = subdirectories.Count - 1; i >= 0; i--)
+                pending.Push(subdirectories[i]);
         }
-        catch (Exception ex)
-        {
-            accessError = Classify(ex);
-        }
+    }
 
-        WriteRecord(new ScanEntry(dir, true, accessError, null, disk), exporter, stats);
-
-        if (children is null)
-            return;
-
-        var files = new List<ScanEntry>();
-        var subdirectories = new List<string>();
-
+    private void CollectChildren(
+        IEnumerable<string> children,
+        string disk,
+        List<ScanEntry> files,
+        List<string> subdirectories,
+        CsvExporter exporter,
+        ScanStats stats,
+        CancellationToken token)
+    {
         foreach (var child in children)
         {
             token.ThrowIfCancellationRequested();
+
+            if (_outputPath is not null && string.Equals(child, _outputPath, StringComparison.OrdinalIgnoreCase))
+                continue;
 
             FileAttributes attr;
             try
@@ -67,45 +101,43 @@ public sealed class FileScanner
             }
             catch
             {
-                files.Add(new ScanEntry(child, false, "Access denied while reading attributes", null, disk));
+                var entry = new ScanEntry(child, Directory.Exists(child), "Access denied while reading attributes", null, disk);
+                if (entry.IsDirectory)
+                    WriteRecord(entry, exporter, stats);
+                else
+                    files.Add(entry);
                 continue;
             }
 
-            var isDirectory = (attr & FileAttributes.Directory) != 0;
-
-            if (isDirectory)
-            {
-                if ((attr & FileAttributes.ReparsePoint) != 0)
-                {
-                    WriteRecord(new ScanEntry(child, true, null, "Reparse point (link), recursive walk skipped", disk), exporter, stats);
-                    continue;
-                }
-
-                subdirectories.Add(child);
-            }
-            else
+            if ((attr & FileAttributes.Directory) == 0)
             {
                 files.Add(new ScanEntry(child, false, null, null, disk));
+                continue;
             }
+
+            if ((attr & FileAttributes.ReparsePoint) != 0)
+            {
+                WriteRecord(new ScanEntry(child, true, null, "Reparse point (link), recursive walk skipped", disk), exporter, stats);
+                continue;
+            }
+
+            subdirectories.Add(child);
         }
+    }
 
-        subdirectories.Sort(StringComparer.OrdinalIgnoreCase);
+    private List<FileStatRecord> CollectMetadata(List<ScanEntry> files, CancellationToken token)
+    {
+        var records = files.Count >= ParallelFileThreshold && _threads > 1
+            ? files
+                .AsParallel()
+                .WithDegreeOfParallelism(_threads)
+                .WithCancellation(token)
+                .Select(_collector.Collect)
+                .ToList()
+            : files.Select(_collector.Collect).ToList();
 
-        var fileRecords = files
-            .AsParallel()
-            .WithDegreeOfParallelism(_threads)
-            .WithCancellation(token)
-            .Select(_collector.Collect)
-            .OrderBy(r => r.FullPath, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        foreach (var record in fileRecords)
-            WriteRecord(record, exporter, stats);
-
-        ReportProgress(stats, report);
-
-        foreach (var subdirectory in subdirectories)
-            Walk(subdirectory, disk, exporter, stats, token, report);
+        records.Sort((left, right) => StringComparer.OrdinalIgnoreCase.Compare(left.FullPath, right.FullPath));
+        return records;
     }
 
     private void WriteRecord(FileStatRecord record, CsvExporter exporter, ScanStats stats)
@@ -135,14 +167,8 @@ public sealed class FileScanner
         if (count - _lastReportedCount < 5000 && _reportTimer.ElapsedMilliseconds < 1000)
             return;
 
-        lock (_reportSync)
-        {
-            if (count - _lastReportedCount < 5000 && _reportTimer.ElapsedMilliseconds < 1000)
-                return;
-            _lastReportedCount = count;
-            _reportTimer.Restart();
-        }
-
+        _lastReportedCount = count;
+        _reportTimer.Restart();
         report(stats);
     }
 }
